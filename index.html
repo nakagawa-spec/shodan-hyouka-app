@@ -48,6 +48,16 @@
     <a class="btn sub" id="openInstall" href="#">追加せずにこのまま開く</a>
   </section>
 
+  <!-- LINEなどのアプリ内で開いた（Safari・Chromeで開き直してもらう） -->
+  <section id="inapp" class="hide">
+    <p><b>このままでは使えません。<br>ブラウザで開き直してください</b></p>
+    <ol>
+      <li>画面の右上（または右下）の <b>「…」</b> や <b>共有ボタン</b> を押す</li>
+      <li><b>「ブラウザで開く」</b>（iPhoneは「Safariで開く」）を押す</li>
+    </ol>
+    <p class="small">LINEやメールのアプリの中で開くと、ホーム画面に追加できず、通知も届きません。</p>
+  </section>
+
   <!-- 通知の許可 -->
   <section id="ask" class="hide">
     <p><b>評価が終わったら<br>スマホにお知らせしますか？</b></p>
@@ -69,7 +79,7 @@
 <script src="config.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const show = id => ['opening', 'install', 'ask', 'denied'].forEach(s => $(s).classList.toggle('hide', s !== id));
+const show = id => ['opening', 'install', 'inapp', 'ask', 'denied'].forEach(s => $(s).classList.toggle('hide', s !== id));
 const store = { get: k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
                 set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
 
@@ -91,7 +101,19 @@ async function getToken() {
   return firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
 }
 
+const ua = navigator.userAgent;
+const inLine = / Line\//i.test(ua);
+const inApp = inLine || /FBAN|FBAV|Instagram|Chatwork|GSA\//i.test(ua);   // LINE・Facebook・Instagram・Chatwork・Googleアプリの中のブラウザ
+
 async function start() {
+  if (inApp) {
+    if (inLine && !/openExternalBrowser=1/.test(location.search)) {   // LINEはこの印を付けて開き直すと、Safari・Chromeで開いてくれる
+      location.replace(location.pathname + '?openExternalBrowser=1');
+      return;
+    }
+    show('inapp');
+    return;
+  }
   if (isIOS && !standalone) { show('install'); $('openInstall').href = GAS_URL; return; }   // iPhoneはホーム画面に追加しないと通知が届かない
   if (!pushOK || store.get('skipPush')) return openApp('');
   if (Notification.permission === 'denied') { show('denied'); $('openDenied').href = GAS_URL; return; }
