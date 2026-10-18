@@ -74,7 +74,7 @@ const store = { get: k => { try { return localStorage.getItem(k) || ''; } catch 
                 set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
 
 const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);   // 「PC版サイトを表示」中のiPhone・iPadも含める
 const pushOK = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
 // GASのアプリを開く。通知の宛先があれば一緒に渡す（GAS側でログイン中の社用アカウントにひも付けて保存する）
