@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HH商談評価アプリ</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="商談評価">
+<meta name="theme-color" content="#1f3a5f">
+<style>
+  :root { --navy:#1f3a5f; --green:#2e8b57; --gray:#6b7280; --line:#d1d5db; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; background:#f3f5f8; color:#222; }
+  header { background:var(--navy); color:#fff; padding:14px 16px; font-size:18px; font-weight:bold; }
+  main { padding:24px 16px; max-width:520px; margin:0 auto; text-align:center; }
+  img.logo { width:96px; height:96px; border-radius:22px; margin:8px auto 16px; display:block; }
+  p { font-size:16px; line-height:1.7; margin:10px 0; }
+  .small { font-size:13px; color:var(--gray); }
+  button, a.btn { display:block; width:100%; margin-top:18px; padding:15px; font-size:18px; font-weight:bold; color:#fff; background:var(--green); border:0; border-radius:10px; text-decoration:none; font-family:inherit; }
+  button.sub, a.sub { background:#fff; color:var(--navy); border:1px solid var(--line); font-size:15px; padding:12px; }
+  ol { text-align:left; font-size:16px; line-height:1.8; padding-left:1.4em; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 12px 12px 2em; }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<header>HH商談評価アプリ</header>
+<main>
+  <img class="logo" src="apple-touch-icon.png" alt="">
+
+  <!-- 開いています -->
+  <section id="opening">
+    <p><b>アプリを開いています…</b></p>
+    <a class="btn sub" id="openNow" href="#">開かないときはここを押す</a>
+  </section>
+
+  <!-- Safariで開いた（ホーム画面に追加してもらう） -->
+  <section id="install" class="hide">
+    <p><b>ホーム画面に追加すると、<br>アイコンから開けて、通知も届きます</b></p>
+    <ol>
+      <li>画面下の <b>共有ボタン</b>（□に↑）を押す</li>
+      <li><b>「ホーム画面に追加」</b>を押す</li>
+      <li>右上の <b>「追加」</b>を押す</li>
+      <li>ホーム画面の <b>「商談評価」</b>から開く</li>
+    </ol>
+    <a class="btn sub" id="openInstall" href="#">追加せずにこのまま開く</a>
+  </section>
+
+  <!-- 通知の許可 -->
+  <section id="ask" class="hide">
+    <p><b>評価が終わったら<br>スマホにお知らせしますか？</b></p>
+    <p class="small">通知にはお客様の名前や点数は出ません。<br>「評価が届きました」とだけ表示されます。</p>
+    <button id="allow">通知を受け取る</button>
+    <button class="sub" id="skip">通知なしで使う</button>
+  </section>
+
+  <!-- 通知が拒否されている -->
+  <section id="denied" class="hide">
+    <p>通知がオフになっています。</p>
+    <p class="small">受け取りたいときは、スマホの「設定」→「通知」→「商談評価」で<br>「通知を許可」をオンにしてください。</p>
+    <a class="btn" id="openDenied" href="#">アプリを開く</a>
+  </section>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script src="config.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const show = id => ['opening', 'install', 'ask', 'denied'].forEach(s => $(s).classList.toggle('hide', s !== id));
+const store = { get: k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const pushOK = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+// GASのアプリを開く。通知の宛先があれば一緒に渡す（GAS側でログイン中の社用アカウントにひも付けて保存する）
+function openApp(token) {
+  const url = GAS_URL + (token ? '?fcm=' + encodeURIComponent(token) : '');
+  ['openNow', 'openInstall', 'openDenied'].forEach(id => $(id).href = url);
+  show('opening');
+  location.href = url;
+}
+
+async function getToken() {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+  return firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+}
+
+async function start() {
+  if (isIOS && !standalone) { show('install'); $('openInstall').href = GAS_URL; return; }   // iPhoneはホーム画面に追加しないと通知が届かない
+  if (!pushOK || store.get('skipPush')) return openApp('');
+  if (Notification.permission === 'denied') { show('denied'); $('openDenied').href = GAS_URL; return; }
+  if (Notification.permission === 'default') { show('ask'); return; }
+  try { openApp(await getToken()); } catch (e) { openApp(''); }   // 宛先が取れなくてもアプリは使える
+}
+
+$('allow').addEventListener('click', async () => {   // iPhoneでは、ボタンを押したときにしか許可の確認を出せない
+  $('allow').disabled = true;
+  $('allow').textContent = '設定しています…';
+  try {
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') { show('denied'); $('openDenied').href = GAS_URL; return; }
+    openApp(await getToken());
+  } catch (e) { openApp(''); }
+});
+$('skip').addEventListener('click', () => { store.set('skipPush', '1'); openApp(''); });
+
+start();
+</script>
+</body>
+</html>
