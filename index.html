@@ -32,7 +32,8 @@
 
   <!-- 開いています -->
   <section id="opening">
-    <p><b>アプリを開いています…</b></p>
+    <p><b id="openMsg">アプリを開いています…</b></p>
+    <p class="small hide" id="closedNote">左上の ✕ で閉じると、この画面に戻ります。<br>もう一度使うときは、下のボタンを押してください。</p>
     <a class="btn sub" id="openNow" href="#">開かないときはここを押す</a>
   </section>
 
@@ -88,12 +89,30 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(
 const pushOK = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
 // GASのアプリを開く。通知の宛先があれば一緒に渡す（GAS側でログイン中の社用アカウントにひも付けて保存する）
+let appUrl = GAS_URL;
 function openApp(token) {
-  const url = GAS_URL + (token ? '?fcm=' + encodeURIComponent(token) : '');
-  ['openNow', 'openInstall', 'openDenied'].forEach(id => $(id).href = url);
+  appUrl = GAS_URL + (token ? '?fcm=' + encodeURIComponent(token) : '');
+  ['openNow', 'openInstall', 'openDenied'].forEach(id => $(id).href = appUrl);
   show('opening');
-  location.href = url;
+  launch();
 }
+// 毎回ちがうURLにして開く（同じURLだと、✕で閉じたあとに押しても開かないことがあるため。GASは t を見ない）
+function launch() {
+  location.href = appUrl + (appUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+}
+$('openNow').addEventListener('click', e => { e.preventDefault(); launch(); });
+
+// アプリの画面を ✕ で閉じて戻ってきたら、「アプリを開く」ボタンを出す
+function backFromApp() {
+  if ($('opening').classList.contains('hide')) return;
+  $('openMsg').textContent = '下のボタンでアプリを開けます';
+  $('closedNote').classList.remove('hide');
+  $('openNow').textContent = 'アプリを開く';
+  $('openNow').classList.remove('sub');
+}
+addEventListener('pageshow', e => { if (e.persisted) backFromApp(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') backFromApp(); });
+setTimeout(backFromApp, 4000);   // 戻ってきた合図が出ない場合の保険
 
 async function getToken() {
   firebase.initializeApp(FIREBASE_CONFIG);
